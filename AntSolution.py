@@ -4,13 +4,12 @@ class AntSolution:
     def __init__(self):
         self.edges_1 = set()
         self.edges_2 = set()
-        self.edges_shared = set()
         
         self.weight = None
     
     
     def __str__(self):
-        return f"E1: {self.edges_1}\nE2: {self.edges_2}\nEs: {self.edges_shared}\nObj: {self.weight}"
+        return f"E1: {self.edges_1}\nE2: {self.edges_2}\nObj: {self.weight}"
         
         
     def write_solution_to_file(self, g : Graph, file : str):

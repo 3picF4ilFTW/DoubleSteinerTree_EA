@@ -33,7 +33,8 @@ def main():
     
     start = time.process_time()
     if algorithm == "aco":
-        # sol, dur = ...
+        aco = AntColonyOptimization(graph, parameters)
+        sol, dur = aco.run(limit, verbose=2)
         pass
     elif algorithm == "ea":
         # sol, dur = ...

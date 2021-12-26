@@ -1,6 +1,8 @@
 from Graph import Graph
+from AntSolution import AntSolution
 import random
 import utils
+import time
 
 
 class AntColonyOptimization:
@@ -12,32 +14,87 @@ class AntColonyOptimization:
         self.discount_1 = float(self.graph.gamma) / float(self.graph.alpha_1)
         self.discount_2 = float(self.graph.gamma) / float(self.graph.alpha_2)
         
-        self.tau0 = params["tau0"]
-        self.q0 = params["q0"]
-        self.alpha = params["alpha"]
-        self.beta = params["beta"]
+        self.tau0 = params.get("tau0", 1.0)
+        self.q0 = params.get("q0", 0.15)
+        self.alpha = params.get("alpha", 1.2)
+        self.beta = params.get("beta", 0.8)
+        self.rho = params.get("rho", 0.01)
+        self.ants = int(params.get("ants", 8))
 
         # pheromone matrices based on ordered edges (tuples) 
-        self.pheromones_1 = []
-        self.pheromones_2 = []
+        self.pheromones_1 = {}
+        self.pheromones_2 = {}
 
         for v1,v2 in self.graph.graph.edges():
             edge = utils.ordered_edge(v1,v2)
             self.pheromones_1[edge] = self.tau0
             self.pheromones_2[edge] = self.tau0
 
+    
+    def run(self, max_duration, verbose=0):
+        best_solution = None
+        best_time = None
+        
+        start = time.process_time()
+        while time.process_time() - start < max_duration:
+            new_solution = self.run_ants()
+            
+            if verbose >= 2:
+                print(f"New solution:\n{new_solution}")
+            
+            if best_solution is None or best_solution.weight > new_solution.weight:
+                best_solution = new_solution
+                best_time = time.process_time() - start
+            
+            if verbose >= 2:
+                print(f"Best solution:\n{best_solution}")
+                print(f"Duration: {time.process_time() - start} of {max_duration}\n")
+        
+            self.global_update(best_solution)
+        
+        return best_solution, best_time
+
+    
+    def run_ants(self):
+        best_solution = None
+    
+        for i in range(0, self.ants):
+            ant = Ant(self)
+            while not ant.done():
+                ant.take_step()
+            new_solution = ant.get_solution()
+            
+            if best_solution is None or best_solution.weight > new_solution.weight:
+                best_solution = new_solution
+        
+        return best_solution
+
+
+    def global_update(self, solution):
+        for e in self.pheromones_1:
+            if e in solution.edges_1:
+                self.pheromones_1[e] = (1.0 - self.rho) * self.pheromones_1[e] + self.rho * 1.0 / (solution.weight)
+            else:
+                self.pheromones_1[e] = (1.0 - self.rho) * self.pheromones_1[e]
+        
+        for e in self.pheromones_2:
+            if e in solution.edges_2:
+                self.pheromones_2[e] = (1.0 - self.rho) * self.pheromones_2[e] + self.rho * 1.0 / (solution.weight)
+            else:
+                self.pheromones_2[e] = (1.0 - self.rho) * self.pheromones_2[e]
+    
 
 class Ant:
     def __init__(self, aco : AntColonyOptimization):
         self.aco = aco
         
         # terminals yet to be traversed
-        self.terminals_1 = self.aco.graph.terminal_1.copy()
-        self.terminals_2 = self.aco.graph.terminal_2.copy()
+        self.terminals_1 = set(self.aco.graph.terminal_1)
+        self.terminals_2 = set(self.aco.graph.terminal_2)
 
         # start terminals
-        n1 = self.terminals_1[random.randrange(0, len(self.terminals_1))]
-        n2 = self.terminals_2[random.randrange(0, len(self.terminals_2))]
+        n1 = random.choice(self.aco.graph.terminal_1)
+        n2 = random.choice(self.aco.graph.terminal_2)
         self.terminals_1.remove(n1)
         self.terminals_2.remove(n2)
 
@@ -66,24 +123,23 @@ class Ant:
     def take_step(self):
         if len(self.terminals_1) > 0:        
             # pick an edge
-            ranking = map(lambda e: compute_edge_objective(e, self.aco.pheromones_1, self.edges_2, self.aco.discount_1), self.cand_1)
+            ranking = list(map(lambda e: (e, self.compute_edge_objective(e, self.aco.pheromones_1, self.edges_2, self.aco.discount_1)), self.cand_1))
             q = random.random()
             if q < self.aco.q0:
-                # clever fast way to get the maximum index (see https://stackoverflow.com/questions/2474015/getting-the-index-of-the-returned-max-or-min-item-using-max-min-on-a-list)
-                index = max(range(0, len(ranking)), key=ranking.__getitem__)
-                edge = self.cand_1[index]
+                edge = max(ranking, key=lambda t: t[1])[0]
             else:
-                edge = random.choices(self.cand_1, weights=ranking)
+                ranking = list(zip(*ranking)) # unzips the ranking list
+                edge = random.choices(ranking[0], weights=ranking[1])[0]
 
             # add edge
-            self.edges1.add(edge)
+            self.edges_1.add(edge)
             if edge in self.edges_2:
                 self.edges_shared.add(edge)
 
             self.weight_1 += self.aco.graph.graph.get_edge_data(*edge)["weight_1"]
-                        
+            
             # update data structures
-            new_node = edge[0] if edge[0] in self.nodes_1 else edge[1]
+            new_node = edge[0] if edge[0] not in self.nodes_1 else edge[1]
             self.nodes_1[edge[0]] = self.nodes_1.get(edge[0], 0) + 1
             self.nodes_1[edge[1]] = self.nodes_1.get(edge[1], 0) + 1
             
@@ -96,24 +152,23 @@ class Ant:
 
         if len(self.terminals_2) > 0:        
             # pick an edge
-            ranking = map(lambda e: compute_edge_objective(e, self.aco.pheromones_2, self.edges_1, self.aco.discount_2), self.cand_2)
+            ranking = list(map(lambda e: (e, self.compute_edge_objective(e, self.aco.pheromones_2, self.edges_1, self.aco.discount_2)), self.cand_2))
             q = random.random()
             if q < self.aco.q0:
-                # clever fast way to get the maximum index (see https://stackoverflow.com/questions/2474015/getting-the-index-of-the-returned-max-or-min-item-using-max-min-on-a-list)
-                index = max(range(0, len(ranking)), key=ranking.__getitem__)
-                edge = self.cand_2[index]
+                edge = max(ranking, key=lambda t: t[1])[0]
             else:
-                edge = random.choices(self.cand_2, weights=ranking)
+                ranking = list(zip(*ranking)) # unzips the ranking list
+                edge = random.choices(ranking[0], weights=ranking[1])[0]
 
             # add edge
-            self.edges2.add(edge)
+            self.edges_2.add(edge)
             if edge in self.edges_1:
                 self.edges_shared.add(edge)
 
             self.weight_2 += self.aco.graph.graph.get_edge_data(*edge)["weight_2"]
-                        
+            
             # update data structures
-            new_node = edge[0] if edge[0] in self.nodes_2 else edge[1]
+            new_node = edge[0] if edge[0] not in self.nodes_2 else edge[1]
             self.nodes_2[edge[0]] = self.nodes_2.get(edge[0], 0) + 1
             self.nodes_2[edge[1]] = self.nodes_2.get(edge[1], 0) + 1
             
@@ -123,16 +178,62 @@ class Ant:
             self.cand_2.update(cand_add)
             cand_del = {e for e in self.cand_2 if e[0] in self.nodes_2 and e[1] in self.nodes_2}
             self.cand_2.difference_update(cand_del)
-            
+        
     
-    def compute_edge_objective(edge, pheromones, discounted_edges, discount):
+    def compute_edge_objective(self, edge, pheromones, discounted_edges, discount):
         f1 = pheromones[edge] ** self.aco.alpha
         if edge in discounted_edges:
-            f2 = ((1.0 / (self.aco.graph.graph.get_edge_data(*e)["weight"] - discount)) ** self.aco.beta)
+            f2 = ((1.0 / (self.aco.graph.graph.get_edge_data(*edge)["weight"] - discount)) ** self.aco.beta)
         else:
-            f2 = ((1.0 / self.aco.graph.graph.get_edge_data(*e)["weight"]) ** self.aco.beta)
+            f2 = ((1.0 / self.aco.graph.graph.get_edge_data(*edge)["weight"]) ** self.aco.beta)
         return f1 * f2
     
     
+    def trim(self):
+        changed = True
+        while changed:
+            changed = False
+            edges_to_remove = set()
+            
+            for n,v in self.nodes_1.items():
+                if n not in self.aco.graph.terminal_1 and v == 1:
+                    edges_to_remove.update({e for e in self.edges_1 if e[0] == n or e[1] == n})
+                    changed = True
+            
+            for e in edges_to_remove:
+                self.weight_1 -= self.aco.graph.graph.get_edge_data(*e)["weight_1"]
+                self.nodes_1[e[0]] -= 1
+                self.nodes_1[e[1]] -= 1
+            
+            self.edges_1.difference_update(edges_to_remove)
+            self.edges_shared.difference_update(edges_to_remove)
+            
+        changed = True
+        while changed:
+            changed = False
+            edges_to_remove = set()
+            
+            for n,v in self.nodes_2.items():
+                if n not in self.aco.graph.terminal_2 and v == 1:
+                    edges_to_remove.update({e for e in self.edges_2 if e[0] == n or e[1] == n})
+                    changed = True
+            
+            for e in edges_to_remove:
+                self.weight_2 -= self.aco.graph.graph.get_edge_data(*e)["weight_2"]
+                self.nodes_2[e[0]] -= 1
+                self.nodes_2[e[1]] -= 1
+            
+            self.edges_2.difference_update(edges_to_remove)
+            self.edges_shared.difference_update(edges_to_remove)
+    
+    
     def get_solution(self):
-        pass
+        self.trim()
+        
+        solution = AntSolution()
+        solution.edges_1 = self.edges_1
+        solution.edges_2 = self.edges_2
+        solution.weight = self.weight_1 + self.weight_2 + len(self.edges_shared) * self.aco.graph.gamma
+        
+        return solution
+        
