@@ -23,7 +23,7 @@ def main():
         limit = float(sys.argv[2])
         algorithm = sys.argv[3].lower()
         
-        parameters = {key: float(value) for (key,value) in map(lambda s: s.split("="), sys.argv[4:])}    
+        parameters = {key.lower(): float(value) for (key,value) in map(lambda s: s.split("="), sys.argv[4:])}    
         
     random.seed(1234)
     
