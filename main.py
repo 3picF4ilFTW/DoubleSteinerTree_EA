@@ -7,15 +7,23 @@ import bisect
 from copy import copy
 import networkx as nx
 import utils
+import os
 from Graph import Graph
 from AntSolution import AntSolution
 from AntColonyOptimization import AntColonyOptimization
 
 
+def try_float(str):
+    try:
+        return float(str)
+    except ValueError:
+        return str
+
 def main():
     if len(sys.argv) < 4:
         print("The following arguments are required: filename runtime algorithm parameters.")
         print("The algorithm-specific parameters can be provided as key=value pairs.")
+        print("You may always use a paramter dir=... which sets an directory to output the solution to.")
         exit()
 
     else:
@@ -23,7 +31,7 @@ def main():
         limit = float(sys.argv[2])
         algorithm = sys.argv[3].lower()
         
-        parameters = {key.lower(): float(value) for (key,value) in map(lambda s: s.split("="), sys.argv[4:])}    
+        parameters = {key.lower(): try_float(value) for (key,value) in map(lambda s: s.split("="), sys.argv[4:])}
         
     random.seed(1234)
     
@@ -44,6 +52,10 @@ def main():
     end = time.process_time()
 
     print(f"Running time was: {end - start}")
+
+    out_dir = parameters.get("dir", "")
+    if out_dir != "":
+        input = out_dir + "/" + os.path.basename(input)
     
     output = input.replace(".txt", f"_{algorithm}.txt")
     outputlog = input.replace(".txt", "_log.txt")

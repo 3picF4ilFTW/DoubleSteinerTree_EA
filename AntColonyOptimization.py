@@ -14,13 +14,13 @@ class AntColonyOptimization:
         self.discount_1 = float(self.graph.gamma) / float(self.graph.alpha_1)
         self.discount_2 = float(self.graph.gamma) / float(self.graph.alpha_2)
         
-        self.tau0 = params.get("tau0", 1.0 / (60000.0 * 10.0))
+        self.tau0 = params.get("tau0", 1.0 / (30000.0 * 10.0))
         self.xi = params.get("xi", 0.1)
-        self.q0 = params.get("q0", 0.5)
-        self.alpha = params.get("alpha", 1.2)
-        self.beta = params.get("beta", 0.8)
+        self.q0 = params.get("q0", 0.75)
+        self.alpha = params.get("alpha", 1.0)
+        self.beta = params.get("beta", 1.0)
         self.rho = params.get("rho", 0.1)
-        self.ants = int(params.get("ants", 8))
+        self.ants = int(params.get("ants", 16))
 
         # pheromone matrices based on ordered edges (tuples) 
         self.pheromones_1 = {}
@@ -32,58 +32,73 @@ class AntColonyOptimization:
             self.pheromones_2[edge] = self.tau0
 
     
-    def run(self, max_duration, verbose=0):
+    def run(self, max_duration, verbose=2):
         best_solution = None
         best_time = None
         
         start = time.process_time()
         while time.process_time() - start < max_duration:
-            new_solution = self.run_ants()
+            new_solutions, best_new_solution = self.run_ants()
             
             if verbose >= 2:
-                print(f"New solution:\n{new_solution}")
+                print(f"New solution:\n{best_new_solution}")
             
-            if best_solution is None or best_solution.weight > new_solution.weight:
-                best_solution = new_solution
+            if best_solution is None or best_solution.weight > best_new_solution.weight:
+                best_solution = best_new_solution
                 best_time = time.process_time() - start
             
             if verbose >= 2:
                 print(f"Best solution:\n{best_solution}")
                 print(f"Duration: {time.process_time() - start} of {max_duration}\n")
         
-            self.global_update(best_solution)
+            self.global_update(new_solutions, best_solution, verbose)
         
         return best_solution, best_time
 
     
     def run_ants(self):
         best_solution = None
+        solutions = []
     
         for i in range(0, self.ants):
             ant = Ant(self)
             while not ant.done():
                 ant.take_step()
             new_solution = ant.get_solution()
+            solutions.append(new_solution)
             self.local_update(new_solution)
             
             if best_solution is None or best_solution.weight > new_solution.weight:
                 best_solution = new_solution
         
-        return best_solution
+        return solutions, best_solution
 
 
-    def global_update(self, solution):
+    def global_update(self, solutions, best_solution, verbose):
+        sum1 = 0
+        sum2 = 0
         for e in self.pheromones_1:
-            if e in solution.edges_1:
-                self.pheromones_1[e] = (1.0 - self.rho) * self.pheromones_1[e] + self.rho * 1.0 / (solution.weight)
-            else:
-                self.pheromones_1[e] = (1.0 - self.rho) * self.pheromones_1[e]
+            sum1 += self.pheromones_1[e]
+            self.pheromones_1[e] = (1.0 - self.rho) * self.pheromones_1[e]
         
         for e in self.pheromones_2:
-            if e in solution.edges_2:
-                self.pheromones_2[e] = (1.0 - self.rho) * self.pheromones_2[e] + self.rho * 1.0 / (solution.weight)
-            else:
-                self.pheromones_2[e] = (1.0 - self.rho) * self.pheromones_2[e]
+            sum2 += self.pheromones_2[e]
+            self.pheromones_2[e] = (1.0 - self.rho) * self.pheromones_2[e]
+        
+        for s in solutions:
+            for e in s.edges_1:
+                self.pheromones_1[e] += self.rho * pow(1.0 / (best_solution.weight), 2.0)
+            for e in s.edges_2:
+                self.pheromones_2[e] += self.rho * pow(1.0 / (best_solution.weight), 2.0)
+        
+        for e in best_solution.edges_1:
+            self.pheromones_1[e] += self.rho * 1.0 / (best_solution.weight)
+        
+        for e in best_solution.edges_2:
+            self.pheromones_2[e] += self.rho * 1.0 / (best_solution.weight)
+        
+        if verbose >= 2:
+            print(f"SUMS: {sum1} {sum2}")
     
     
     def local_update(self, solution):
