@@ -14,11 +14,12 @@ class AntColonyOptimization:
         self.discount_1 = float(self.graph.gamma) / float(self.graph.alpha_1)
         self.discount_2 = float(self.graph.gamma) / float(self.graph.alpha_2)
         
-        self.tau0 = params.get("tau0", 1.0)
-        self.q0 = params.get("q0", 0.15)
+        self.tau0 = params.get("tau0", 1.0 / (60000.0 * 10.0))
+        self.xi = params.get("xi", 0.1)
+        self.q0 = params.get("q0", 0.5)
         self.alpha = params.get("alpha", 1.2)
         self.beta = params.get("beta", 0.8)
-        self.rho = params.get("rho", 0.01)
+        self.rho = params.get("rho", 0.1)
         self.ants = int(params.get("ants", 8))
 
         # pheromone matrices based on ordered edges (tuples) 
@@ -63,6 +64,7 @@ class AntColonyOptimization:
             while not ant.done():
                 ant.take_step()
             new_solution = ant.get_solution()
+            self.local_update(new_solution)
             
             if best_solution is None or best_solution.weight > new_solution.weight:
                 best_solution = new_solution
@@ -82,6 +84,14 @@ class AntColonyOptimization:
                 self.pheromones_2[e] = (1.0 - self.rho) * self.pheromones_2[e] + self.rho * 1.0 / (solution.weight)
             else:
                 self.pheromones_2[e] = (1.0 - self.rho) * self.pheromones_2[e]
+    
+    
+    def local_update(self, solution):
+        for e in solution.edges_1:
+            self.pheromones_1[e] = (1.0 - self.xi) * self.pheromones_1[e] + self.xi * self.tau0
+        
+        for e in solution.edges_2:
+            self.pheromones_2[e] = (1.0 - self.xi) * self.pheromones_2[e] + self.xi * self.tau0
     
 
 class Ant:
@@ -130,7 +140,7 @@ class Ant:
             else:
                 ranking = list(zip(*ranking)) # unzips the ranking list
                 edge = random.choices(ranking[0], weights=ranking[1])[0]
-
+                
             # add edge
             self.edges_1.add(edge)
             if edge in self.edges_2:
@@ -159,7 +169,7 @@ class Ant:
             else:
                 ranking = list(zip(*ranking)) # unzips the ranking list
                 edge = random.choices(ranking[0], weights=ranking[1])[0]
-
+                
             # add edge
             self.edges_2.add(edge)
             if edge in self.edges_1:
