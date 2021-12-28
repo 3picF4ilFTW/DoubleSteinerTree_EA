@@ -7,23 +7,18 @@ import bisect
 from copy import copy
 import networkx as nx
 import utils
-import os
 from Graph import Graph
 from AntSolution import AntSolution
 from AntColonyOptimization import AntColonyOptimization
+from GA2 import GA
+from Graph_GA import Graph as Graph2
 
-
-def try_float(str):
-    try:
-        return float(str)
-    except ValueError:
-        return str
 
 def main():
     if len(sys.argv) < 4:
         print("The following arguments are required: filename runtime algorithm parameters.")
         print("The algorithm-specific parameters can be provided as key=value pairs.")
-        print("You may always use a paramter dir=... which sets an directory to output the solution to.")
+        print(sys.argv[1])
         exit()
 
     else:
@@ -31,7 +26,7 @@ def main():
         limit = float(sys.argv[2])
         algorithm = sys.argv[3].lower()
         
-        parameters = {key.lower(): try_float(value) for (key,value) in map(lambda s: s.split("="), sys.argv[4:])}
+        parameters = {key.lower(): float(value) for (key,value) in map(lambda s: s.split("="), sys.argv[4:])}    
         
     random.seed(1234)
     
@@ -41,21 +36,39 @@ def main():
     
     start = time.process_time()
     if algorithm == "aco":
+        print(f"Loading input graph from {input}...")
+        graph = Graph()
+        graph.load_graph_from_file(input)
         aco = AntColonyOptimization(graph, parameters)
         sol, dur = aco.run(limit, verbose=2)
-        pass
+
     elif algorithm == "ea":
-        # sol, dur = ...
-        pass
+        print(f"Loading input graph from {input}...")
+        graph = Graph2()
+        graph.load_graph_from_file(input)
+        ga = GA(graph)
+        if parameters != {}:
+            print(parameters)
+            ga.setup(parameters)
+        start_evol = time.process_time()
+        best_val, best_sol, best_st = ga.do_evolution_single()
+        end_evol = time.process_time()
+        print(f"Best found value was {best_val}")
+        print(f"Best found solutions were: \n{best_sol[0]}\n{best_sol[1]}")
+        
+        
+        dur = None
+        sol = AntSolution()
+        sol.edges_1 = set(best_st[0].edges)
+        sol.edges_2 = set(best_st[1].edges)
+        sol.weight = best_val
+        
+
     else:
         print(f"Invalid algorithm {algorithm}!")
     end = time.process_time()
 
     print(f"Running time was: {end - start}")
-
-    out_dir = parameters.get("dir", "")
-    if out_dir != "":
-        input = out_dir + "/" + os.path.basename(input)
     
     output = input.replace(".txt", f"_{algorithm}.txt")
     outputlog = input.replace(".txt", "_log.txt")
