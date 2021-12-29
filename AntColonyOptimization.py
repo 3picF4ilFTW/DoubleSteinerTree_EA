@@ -135,6 +135,7 @@ class Ant:
         # keeping track of weights
         self.weight_1 = 0
         self.weight_2 = 0
+        self.weight_shared = 0
         
         # candidate edges
         self.cand_1 = {utils.ordered_edge(n1, n) for n in self.aco.graph.graph.neighbors(n1)}
@@ -158,10 +159,11 @@ class Ant:
                 
             # add edge
             self.edges_1.add(edge)
-            if edge in self.edges_2:
-                self.edges_shared.add(edge)
-
             self.weight_1 += self.aco.graph.graph.get_edge_data(*edge)["weight_1"]
+            
+            if edge in self.edges_2 and edge not in self.edges_shared:
+                self.edges_shared.add(edge)
+                self.weight_shared += self.aco.graph.graph.get_edge_data(*edge)["weight"]
             
             # update data structures
             new_node = edge[0] if edge[0] not in self.nodes_1 else edge[1]
@@ -187,10 +189,11 @@ class Ant:
                 
             # add edge
             self.edges_2.add(edge)
-            if edge in self.edges_1:
-                self.edges_shared.add(edge)
-
             self.weight_2 += self.aco.graph.graph.get_edge_data(*edge)["weight_2"]
+            
+            if edge in self.edges_1 and edge not in self.edges_shared:
+                self.edges_shared.add(edge)
+                self.weight_shared += self.aco.graph.graph.get_edge_data(*edge)["weight"]
             
             # update data structures
             new_node = edge[0] if edge[0] not in self.nodes_2 else edge[1]
@@ -207,10 +210,15 @@ class Ant:
     
     def compute_edge_objective(self, edge, pheromones, discounted_edges, discount):
         f1 = pheromones[edge] ** self.aco.alpha
+        weight = self.aco.graph.graph.get_edge_data(*edge)["weight"]
         if edge in discounted_edges:
-            f2 = ((1.0 / (self.aco.graph.graph.get_edge_data(*edge)["weight"] - discount)) ** self.aco.beta)
+            weight += discount
+            if weight == 0:
+                f2 = 1.0
+            else:
+                f2 = ((1.0 / weight) ** self.aco.beta)
         else:
-            f2 = ((1.0 / self.aco.graph.graph.get_edge_data(*edge)["weight"]) ** self.aco.beta)
+            f2 = ((1.0 / weight) ** self.aco.beta)
         return f1 * f2
     
     
@@ -229,6 +237,8 @@ class Ant:
                 self.weight_1 -= self.aco.graph.graph.get_edge_data(*e)["weight_1"]
                 self.nodes_1[e[0]] -= 1
                 self.nodes_1[e[1]] -= 1
+                if e in self.edges_shared:
+                    self.weight_shared -= self.aco.graph.graph.get_edge_data(*e)["weight"]
             
             self.edges_1.difference_update(edges_to_remove)
             self.edges_shared.difference_update(edges_to_remove)
@@ -247,6 +257,8 @@ class Ant:
                 self.weight_2 -= self.aco.graph.graph.get_edge_data(*e)["weight_2"]
                 self.nodes_2[e[0]] -= 1
                 self.nodes_2[e[1]] -= 1
+                if e in self.edges_shared:
+                    self.weight_shared -= self.aco.graph.graph.get_edge_data(*e)["weight"]
             
             self.edges_2.difference_update(edges_to_remove)
             self.edges_shared.difference_update(edges_to_remove)
@@ -258,7 +270,7 @@ class Ant:
         solution = AntSolution()
         solution.edges_1 = self.edges_1
         solution.edges_2 = self.edges_2
-        solution.weight = self.weight_1 + self.weight_2 + len(self.edges_shared) * self.aco.graph.gamma
+        solution.weight = self.weight_1 + self.weight_2 + self.weight_shared * self.aco.graph.gamma
         
         return solution
         
