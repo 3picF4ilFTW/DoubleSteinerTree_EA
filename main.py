@@ -14,10 +14,17 @@ from GA2 import GA
 from Graph_GA import Graph as Graph2
 
 
+def try_float(str):
+    try:
+        return float(str)
+    except ValueError:
+        return str
+
 def main():
     if len(sys.argv) < 4:
         print("The following arguments are required: filename runtime algorithm parameters.")
         print("The algorithm-specific parameters can be provided as key=value pairs.")
+        print("You may always use a paramter dir=... which sets an directory to output the solution to.")
         print(sys.argv[1])
         exit()
 
@@ -26,7 +33,7 @@ def main():
         limit = float(sys.argv[2])
         algorithm = sys.argv[3].lower()
         
-        parameters = {key.lower(): float(value) for (key,value) in map(lambda s: s.split("="), sys.argv[4:])}    
+        parameters = {key.lower(): try_float(value) for (key,value) in map(lambda s: s.split("="), sys.argv[4:])}    
         
     random.seed(1234)
     
