@@ -37,17 +37,13 @@ def main():
         
     random.seed(1234)
     
-    print(f"Loading input graph from {input}...")
-    graph = Graph()
-    graph.load_graph_from_file(input)
-    
     start = time.process_time()
     if algorithm == "aco":
         print(f"Loading input graph from {input}...")
         graph = Graph()
         graph.load_graph_from_file(input)
         aco = AntColonyOptimization(graph, parameters)
-        sol, dur = aco.run(limit, verbose=2)
+        sol, dur = aco.run(limit, verbose=0)
 
     elif algorithm == "ea":
         print(f"Loading input graph from {input}...")
@@ -77,6 +73,10 @@ def main():
 
     print(f"Running time was: {end - start}")
     
+    out_dir = parameters.get("dir", "")
+    if out_dir != "":
+        input = out_dir + "/" + os.path.basename(input)
+
     output = input.replace(".txt", f"_{algorithm}.txt")
     outputlog = input.replace(".txt", "_log.txt")
 
