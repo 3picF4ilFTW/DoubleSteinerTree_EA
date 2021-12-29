@@ -4,6 +4,7 @@ import itertools
 import random
 import math
 import bisect
+import os
 from copy import copy
 import networkx as nx
 import utils
