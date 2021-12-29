@@ -223,9 +223,14 @@ class GA:
         self.current_st1, self.current_st2 = copy.deepcopy(best_st_tuple[0]), copy.deepcopy(best_st_tuple[1])
 
         start = timeit.default_timer()
+        start_last_improvement = timeit.default_timer()
         gen_ctr = 0
         total_gen = 0
         while True:#this loop iteratively evolves sol1 or sol2 until its max is reached
+            end_total_timer = timeit.default_timer()
+            if end_total_timer - start_last_improvement > 60:
+                print("no improvement for 60 seconds break")
+                break
             while True:
                 gen_ctr += 1
                 total_gen += 1
@@ -238,6 +243,7 @@ class GA:
                 tmp_best_eval,tmp_best_sol, tmp_best_st, tmp_eval_lst = self.find_steiner_tree(self.graph, self.graph.terminal_2,2, self.current_st1, dg)
                 eval_list2 = tmp_eval_lst
                 if tmp_best_eval <= best_so_far:
+                    start_last_improvement = timeit.default_timer()
                     best_so_far = tmp_best_eval
                     self.current_solution2 = copy.deepcopy(tmp_best_sol)
                     self.current_st2 = copy.deepcopy(tmp_best_st)
@@ -264,6 +270,7 @@ class GA:
                 tmp_best_eval,tmp_best_sol, tmp_best_st, tmp_eval_lst = self.find_steiner_tree(self.graph, self.graph.terminal_1,1, self.current_st2, dg)
                 eval_list1 = tmp_eval_lst
                 if tmp_best_eval <= best_so_far:
+                    start_last_improvement = timeit.default_timer()
                     best_so_far = tmp_best_eval
                     self.current_solution1 = copy.deepcopy(tmp_best_sol)
                     self.current_st1 = copy.deepcopy(tmp_best_st)
