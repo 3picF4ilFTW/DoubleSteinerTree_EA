@@ -4,18 +4,19 @@ import copy
 import timeit
 import networkx as nx
 import numpy as np
+import utils
 
 
 class GA:
     def __init__(self, graph:Graph):
-        self.population_size = 20
-        self.mutation_chance = 0.1
+        self.population_size = 100
+        self.mutation_chance = 0.01
 
-        self.parental_survivors = 10 #for tournament and roulettewheel selection
+        self.parental_survivors = 50 #for tournament and roulettewheel selection
         self.tournament_size = 2
 
         self.parental_choice = "tournament" # or roulette
-        self.crossover_choice = "onepoint" # or two point or circle crossover not yet implemented
+        self.crossover_choice = "uniform" # or onepoint
 
         self.max_generations_with_no_improvement = 3
         self.max_time = 3
@@ -88,6 +89,15 @@ class GA:
             return solution
         elif self.crossover_choice == "twopoint":
             print("not yet implemented")
+        elif self.crossover_choice == "uniform":
+            new_sol = []
+            for index in range(len(solution1)):
+                if random.random() < 0.5:
+                    new_sol.append(solution1[index])
+                else:
+                    new_sol.append(solution2[index])
+            
+            return new_sol
         else:
             print(f"not specified operation {self.crossover_choice}")
             return None
@@ -111,14 +121,32 @@ class GA:
         Returns the weight of a solution in steiner_tree1 and steiner_tree2 and overlap.
         overlap gives the penalty or 
     """
+    def total_weight_in_a_graph(self, graph: nx.Graph):
+        w = 0
+        
+    
     def evaluate(self, steiner_tree1: nx.Graph, steiner_tree2: nx.Graph):
-        s1_size = steiner_tree1.size("weight")
-        s2_size = steiner_tree2.size("weight")
+        new_s1_size = 0
+        att = nx.get_edge_attributes(self.graph.graph, "weight")
+        
+        for edge in steiner_tree1.edges:
+            new_s1_size += att[utils.ordered_edge(edge[0],edge[1])]
+        new_s1_size = new_s1_size*self.graph.alpha_1
+        
+        new_s2_size = 0
+        for edge in steiner_tree2.edges:
+            new_s2_size += att[utils.ordered_edge(edge[0],edge[1])]
+        new_s2_size = new_s2_size*self.graph.alpha_2
         overlap = 0
         shared_edges = set(steiner_tree1.edges).intersection(set(steiner_tree2.edges))
         for edge in shared_edges:
-            overlap += self.graph.graph.get_edge_data(edge[0],edge[1])["weight"] * self.graph.gamma
-        return s1_size + s2_size + overlap
+            overlap += att[utils.ordered_edge(edge[0],edge[1])] * self.graph.gamma
+        total = new_s1_size + new_s2_size + overlap
+        
+        
+        return total
+        
+    
 
     def find_steiner_tree(self, graph: Graph, terminal_nodes, treeindex: int, other_st: nx.Graph, dg: nx.Graph):
         solutions = getattr(self, f"solution{treeindex}")
@@ -129,6 +157,7 @@ class GA:
         eval_lst = []
         already_solved_dict = {}
         for sol in solutions:
+            """#I think this might cause problems omit for now
             if treeindex == 2:
                 if (tuple(self.current_solution1), tuple(sol)) in self.already_solved_total:
                     eval_lst.append(self.already_solved_total[(tuple(self.current_solution1), tuple(sol))])
@@ -137,6 +166,7 @@ class GA:
                 if (tuple(sol), tuple(self.current_solution2)) in self.already_solved_total:
                     eval_lst.append(self.already_solved_total[(tuple(sol), tuple(self.current_solution2))])
                     continue
+            """
             node_lst = self.binary_solution_to_node_list(sol)
             tmp_dg = copy.deepcopy(dg)
             for node in node_lst:
@@ -144,16 +174,20 @@ class GA:
                     graph.augment_distance_graph(tmp_dg, node, f"weight_{treeindex}_mod", already_solved_dict= already_solved_dict)
 
             st_tmp = graph.rebuild_steiner_tree(tmp_dg, treeindex)
+            """#This would be nice if it worked such that we can remove the deepcopy but first we would have to check whether a key node is a terminal node
+            for node in node_lst:
+                if node in tmp_dg:
+                    tmp_dg.remove_node(node)"""
             if other_st is None:
                 return None,sol,  st_tmp, eval_lst
             eval = self.evaluate(st_tmp, other_st)
             eval_lst.append(eval)
-
+            """#I think this might cause problems omit for now
             if treeindex == 2:
                 self.already_solved_total[(tuple(self.current_solution1), tuple(sol))] = eval
             else:
                 self.already_solved_total[(tuple(sol), tuple(self.current_solution2))] = eval
-
+            """
             if eval < best_eval:
                 best_eval = eval
                 best_st = st_tmp
@@ -175,8 +209,7 @@ class GA:
         self.graph.modify_weights(st2, 2)
         dg = self.graph.distance_graph(self.graph.terminal_1, 1, True)
         eval, sol1, st1, eval_lst1 = self.find_steiner_tree(self.graph, self.graph.terminal_1, 1, other_st=st2, dg=dg)
-        print(st1)
-        print(st2)
+
 
         return eval, (sol1, sol2), (st1, st2), eval_lst1, eval_lst2
 
@@ -196,8 +229,8 @@ class GA:
                     if t_val < best_t_val:
                         best_t_val = t_val
                         tournament_winner = t
-                if not tournament_winner in parent_index_list:
-                    parent_index_list.append(tournament_winner)
+
+                parent_index_list.append(tournament_winner)
             self.parents = []
             for parent in parent_index_list:
                 self.parents.append(solution[parent])
@@ -212,11 +245,108 @@ class GA:
             p1 = random.choice(parents)
             p2 = random.choice(parents)
             children.append(self.crossover(p1, p2))
+
         self.parents = parents + children #append the children to the parent list
+        for index, parent in enumerate(self.parents): #mutate everything in the parentlist
+            self.parents[index] = self.mutation(parent)
+
+    def do_evolution_single(self, verbose=2):
+        random.seed(123)
+        best_so_far, best_sol_tuple, best_st_tuple, eval_list1, eval_list2 = self.initialize_solution()
+        self.current_solution1, self.current_solution2 = copy.deepcopy(best_sol_tuple[0]), copy.deepcopy(
+            best_sol_tuple[1])
+        self.current_st1, self.current_st2 = copy.deepcopy(best_st_tuple[0]), copy.deepcopy(best_st_tuple[1])
+
+        start = timeit.default_timer()
+        start_last_improvement = timeit.default_timer()
+        gen_ctr = 0
+        total_gen = 0
+        while True:  # this loop iteratively evolves sol1 or sol2 until its max is reached
+            end_total_timer = timeit.default_timer()
+            """if end_total_timer - start_last_improvement > 60:
+                print("no improvement for 60 seconds break")
+                break"""
+            while True:
+                gen_ctr += 1
+                total_gen += 1
+                parents = self.select_parents(2, eval_list2)
+                self.create_children(parents)
+                self.solution2 = self.parents
+                self.graph.reset_edge_weights(2)
+                self.graph.modify_weights(self.current_st1, 1)
+                dg = self.graph.distance_graph(self.graph.terminal_2, 2, True)
+                tmp_best_eval, tmp_best_sol, tmp_best_st, tmp_eval_lst = self.find_steiner_tree(self.graph,
+                                                                                                self.graph.terminal_2,
+                                                                                                2, self.current_st1, dg)
+                eval_list2 = tmp_eval_lst
+                if tmp_best_eval < best_so_far:
+                    start_last_improvement = timeit.default_timer()
+                    best_so_far = tmp_best_eval
+                    self.current_solution2 = copy.deepcopy(tmp_best_sol)
+                    self.current_st2 = copy.deepcopy(tmp_best_st)
+                    gen_ctr = 0
+                    break
+                if gen_ctr > self.max_generations_with_no_improvement:
+                    gen_ctr = 0
+                    if tmp_best_eval <= best_so_far:
+                        start_last_improvement = timeit.default_timer()
+                        best_so_far = tmp_best_eval
+                        self.current_solution2 = copy.deepcopy(tmp_best_sol)
+                        self.current_st2 = copy.deepcopy(tmp_best_st)
+                        gen_ctr = 0
+                        break
+                    break
+            end = timeit.default_timer()
+            if verbose > 0:
+                print(
+                    f"After {total_gen} generations and a time of {end - start} the solutions are:\n{self.current_solution1}\n{self.current_solution2}")
+                print(f"Best eval is: {best_so_far}")
+            if end - start > self.max_time:
+                break
+            gen_ctr = 0
+            while True:
+                gen_ctr += 1
+                total_gen += 1
+                parents = self.select_parents(1, eval_list1)
+                self.create_children(parents)
+                self.solution1 = self.parents
+                self.graph.reset_edge_weights(1)
+                self.graph.modify_weights(self.current_st2, 2)
+                dg = self.graph.distance_graph(self.graph.terminal_1, 1, True)
+                tmp_best_eval, tmp_best_sol, tmp_best_st, tmp_eval_lst = self.find_steiner_tree(self.graph,
+                                                                                                self.graph.terminal_1,
+                                                                                                1, self.current_st2, dg)
+                eval_list1 = tmp_eval_lst
+                if tmp_best_eval < best_so_far:
+                    start_last_improvement = timeit.default_timer()
+                    best_so_far = tmp_best_eval
+                    self.current_solution1 = copy.deepcopy(tmp_best_sol)
+                    self.current_st1 = copy.deepcopy(tmp_best_st)
+                    gen_ctr = 0
+                    break
+                if gen_ctr > self.max_generations_with_no_improvement:
+                    gen_ctr = 0
+                    if tmp_best_eval <= best_so_far:
+                        start_last_improvement = timeit.default_timer()
+                        best_so_far = tmp_best_eval
+                        self.current_solution1 = copy.deepcopy(tmp_best_sol)
+                        self.current_st1 = copy.deepcopy(tmp_best_st)
+                        gen_ctr = 0
+                        break
+                    break
+
+            end = timeit.default_timer()
+            if verbose > 0:
+                print(
+                    f"After {total_gen} generations and a time of {end - start} the solutions are:\n{self.current_solution1}\n{self.current_solution2}")
+                print(f"Best eval is: {best_so_far}")
+            if end - start > self.max_time:
+                break
+
+        return best_so_far, best_sol_tuple, best_st_tuple
 
 
-
-    def do_evolution_single(self):
+    def do_evolution_single_for_tuning(self, verbose = 2):
         random.seed(123)
         best_so_far, best_sol_tuple, best_st_tuple, eval_list1, eval_list2 = self.initialize_solution()
         self.current_solution1, self.current_solution2 = copy.deepcopy(best_sol_tuple[0]), copy.deepcopy(best_sol_tuple[1])
@@ -224,13 +354,17 @@ class GA:
 
         start = timeit.default_timer()
         start_last_improvement = timeit.default_timer()
+
+        eval_in_each_generation = [best_so_far] #this list will be longer than the time list as it contains the initial value
+        time_taken_for_each_generation = []
+
         gen_ctr = 0
         total_gen = 0
         while True:#this loop iteratively evolves sol1 or sol2 until its max is reached
             end_total_timer = timeit.default_timer()
-            if end_total_timer - start_last_improvement > 60:
+            """if end_total_timer - start_last_improvement > 60:
                 print("no improvement for 60 seconds break")
-                break
+                break"""
             while True:
                 gen_ctr += 1
                 total_gen += 1
@@ -242,6 +376,11 @@ class GA:
                 dg = self.graph.distance_graph(self.graph.terminal_2, 2, True)
                 tmp_best_eval,tmp_best_sol, tmp_best_st, tmp_eval_lst = self.find_steiner_tree(self.graph, self.graph.terminal_2,2, self.current_st1, dg)
                 eval_list2 = tmp_eval_lst
+
+                end_total_timer = timeit.default_timer() #appends the eval of a generation and its time
+                eval_in_each_generation.append(tmp_best_eval)
+                time_taken_for_each_generation.append(end_total_timer - start)
+
                 if tmp_best_eval <= best_so_far:
                     start_last_improvement = timeit.default_timer()
                     best_so_far = tmp_best_eval
@@ -252,9 +391,13 @@ class GA:
                 if gen_ctr > self.max_generations_with_no_improvement:
                     gen_ctr = 0
                     break
+                end = timeit.default_timer()
+                if end - start > self.max_time:
+                    break
             end = timeit.default_timer()
-            print(f"After {total_gen} generations and a time of {end-start} the solutions are:\n{self.current_solution1}\n{self.current_solution2}")
-            print(f"Best eval is: {best_so_far}")
+            if verbose > 0:
+                print(f"After {total_gen} generations and a time of {end-start} the solutions are:\n{self.current_solution1}\n{self.current_solution2}")
+                print(f"Best eval is: {best_so_far}")
             if end-start > self.max_time:
                 break
             gen_ctr = 0
@@ -269,6 +412,11 @@ class GA:
                 dg = self.graph.distance_graph(self.graph.terminal_1, 1, True)
                 tmp_best_eval,tmp_best_sol, tmp_best_st, tmp_eval_lst = self.find_steiner_tree(self.graph, self.graph.terminal_1,1, self.current_st2, dg)
                 eval_list1 = tmp_eval_lst
+
+                end_total_timer = timeit.default_timer()  # appends the eval of a generation and its time
+                eval_in_each_generation.append(tmp_best_eval)
+                time_taken_for_each_generation.append(end_total_timer - start)
+
                 if tmp_best_eval <= best_so_far:
                     start_last_improvement = timeit.default_timer()
                     best_so_far = tmp_best_eval
@@ -279,16 +427,20 @@ class GA:
                 if gen_ctr > self.max_generations_with_no_improvement:
                     gen_ctr = 0
                     break
+                end = timeit.default_timer()
+                if end - start > self.max_time:
+                    break
 
             end = timeit.default_timer()
-            print(
-                f"After {total_gen} generations and a time of {end - start} the solutions are:\n{self.current_solution1}\n{self.current_solution2}")
-            print(f"Best eval is: {best_so_far}")
+            if verbose > 0:
+                print(
+                    f"After {total_gen} generations and a time of {end - start} the solutions are:\n{self.current_solution1}\n{self.current_solution2}")
+                print(f"Best eval is: {best_so_far}")
             if end-start > self.max_time:
                 break
 
 
-        return best_so_far, best_sol_tuple, best_st_tuple
+        return best_so_far, best_sol_tuple, best_st_tuple, eval_in_each_generation, time_taken_for_each_generation
 
 
 
@@ -308,12 +460,10 @@ class GA:
     """
     def setup(self, parameters: dict):
         for varname in parameters:
-            if varname == "population_size" or varname == "parental_survivors" or varname == "tournament_size" or varname == "max_time" or varname == "max_generations_with_no_improvement":
+            if varname == "population_size" or varname == "parental_survivors" or varname == "tournament_size"  or varname == "max_generations_with_no_improvement":
                 setattr(self, f"{varname}", int(parameters[varname]))
             elif varname == "parental_choice" or varname == "crossover_choice":
-                print("probably error in setup as values of input are read as floats and cant be converted back into strings")
                 setattr(self, f"{varname}", str(parameters[varname]))
-                exit(-1)
                 if varname == "parental_choice":
                     if getattr(self, f"{varname}") != "tournament" or getattr(self, f"{varname}") != "roulette":
                         print("Error in setup as expected")
