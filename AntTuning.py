@@ -18,7 +18,7 @@ def create_graph(f : str):
 
 def sample_params():
     ret = {}
-    ret["tau_0"] = random.uniform(0.1 / (90000.0), 0.1 / (10000.0))
+    ret["tau0"] = random.uniform(0.1 / (90000.0), 0.1 / (10000.0))
     ret["xi"] = random.uniform(0.05, 0.15)
     ret["q0"] = random.uniform(0.3, 0.9)
     ret["alpha"] = random.uniform(0.25, 2.0)
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     total_best_param = {}
     
     q = Queue(10)
-    param_runs = 85
+    param_runs = 100
     params_list = []
 
     for i in range(0, param_runs):
